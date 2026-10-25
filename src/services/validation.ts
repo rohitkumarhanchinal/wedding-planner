@@ -24,8 +24,11 @@ export function validateEventForm(data: Partial<EventFormData>): {
   if (!data.date) {
     errors.date = 'Event date is required.';
   } else {
-    const parsedDate = new Date(data.date);
-    if (isNaN(parsedDate.getTime())) {
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(data.date);
+    const parsedDate = dateMatch
+      ? new Date(Date.UTC(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3])))
+      : null;
+    if (!dateMatch || !parsedDate || parsedDate.toISOString().slice(0, 10) !== data.date) {
       errors.date = 'Please enter a valid calendar date (YYYY-MM-DD).';
     }
   }

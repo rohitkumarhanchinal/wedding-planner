@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_WEDDING } from '../data/sampleEvents';
 import { parseImportedPlan, validateEventPlan } from '../services/eventPlanValidation';
-import { importPlanFromJson, loadSettings, saveSettings } from '../services/storage';
+import { importPlanFromJson, loadCurrentPlan, loadSavedPlans, loadSettings, saveSettings } from '../services/storage';
 import { GeminiAIAdapter } from '../services/aiAdapter';
 
 const validPlan = structuredClone(SAMPLE_WEDDING);
@@ -28,6 +28,9 @@ describe('event plan import validation', () => {
     const badVendor = structuredClone(validPlan);
     badVendor.vendorChecklist[0].priority = 'urgent' as 'high';
     expect(validateEventPlan(badVendor)).toBe(false);
+    const duplicateIds = structuredClone(validPlan);
+    duplicateIds.vendorChecklist[1].id = duplicateIds.vendorChecklist[0].id;
+    expect(validateEventPlan(duplicateIds)).toBe(false);
     const unbalancedBudget = structuredClone(validPlan);
     unbalancedBudget.budgetBreakdown[0].allocatedAmount += 1;
     expect(validateEventPlan(unbalancedBudget)).toBe(false);
@@ -63,11 +66,24 @@ describe('settings credential handling', () => {
     });
   });
 
+
+  it('removes malformed current plans and filters invalid saved plans', () => {
+    localStorage.setItem('event_planner_current_plan', JSON.stringify({ inputs: { name: 'broken' } }));
+    expect(loadCurrentPlan()).toBeNull();
+    expect(localStorage.getItem('event_planner_current_plan')).toBeNull();
+
+    const invalidSavedPlan = { ...validPlan, timeline: [{ id: 'bad' }] };
+    localStorage.setItem('event_planner_saved_plans', JSON.stringify([validPlan, invalidSavedPlan]));
+    expect(loadSavedPlans()).toEqual([validPlan]);
+    expect(JSON.parse(localStorage.getItem('event_planner_saved_plans') ?? '[]')).toHaveLength(1);
+  });
+
   it('never saves or returns an API key and removes a legacy stored key', () => {
-    saveSettings({ apiKey: 'secret-key-value', useCustomKey: true, model: 'gemini-1.5-flash' });
+    saveSettings({ apiKey: 'secret-key-value', useCustomKey: true, model: 'gemini-3.8-flash' });
     expect(localStorage.getItem('event_planner_settings')).not.toContain('secret-key-value');
-    localStorage.setItem('event_planner_settings', JSON.stringify({ apiKey: 'old-secret', useCustomKey: true, model: 'gemini-1.5-pro' }));
+    localStorage.setItem('event_planner_settings', JSON.stringify({ apiKey: 'old-secret', useCustomKey: true, model: 'gemini-3.1-pro-preview' }));
     expect(loadSettings().apiKey).toBe('');
+    expect(loadSettings().useCustomKey).toBe(false);
     expect(localStorage.getItem('event_planner_settings')).not.toContain('old-secret');
   });
 });
@@ -82,5 +98,68 @@ describe('Gemini safe offline fallback', () => {
     expect(JSON.stringify(result)).not.toContain(apiKey);
     expect(JSON.stringify(result)).not.toContain('denied');
     vi.unstubAllGlobals();
+  });
+
+  it('accepts correctly shaped creative output', async () => {
+    const suggestions = ['Idea one', 'Idea two', 'Idea three'];
+    const generated = {
+      themeAndAtmosphere: suggestions,
+      foodAndBeverage: suggestions,
+      activitiesAndMoments: suggestions,
+      decorAndDetails: suggestions,
+      guestExperience: suggestions,
+      assumptions: suggestions,
+      nextSteps: suggestions,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(generated) }] } }] }),
+    }));
+    try {
+      const result = await new GeminiAIAdapter('valid-test-key-123').generatePlan(validPlan.inputs);
+      expect(result.engineMode).toBe('ai');
+      expect(result.ideas.themeAndAtmosphere).toEqual(suggestions);
+      expect(result.assumptions.nextSteps).toEqual(suggestions);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('falls back when the Gemini request times out', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    })));
+    try {
+      const pending = new GeminiAIAdapter('valid-test-key-123').generatePlan(validPlan.inputs);
+      await vi.advanceTimersByTimeAsync(20_000);
+      const result = await pending;
+      expect(result.engineMode).toBe('deterministic');
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('falls back when Gemini returns malformed nested content', async () => {
+    const generated = {
+      themeAndAtmosphere: [{ unsafe: 'not a string' }],
+      foodAndBeverage: ['a', 'b', 'c'],
+      activitiesAndMoments: ['a', 'b', 'c'],
+      decorAndDetails: ['a', 'b', 'c'],
+      guestExperience: ['a', 'b', 'c'],
+      assumptions: ['a', 'b', 'c'],
+      nextSteps: ['a', 'b', 'c'],
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(generated) }] } }] }),
+    }));
+    try {
+      const result = await new GeminiAIAdapter('valid-test-key-123').generatePlan(validPlan.inputs);
+      expect(result.engineMode).toBe('deterministic');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

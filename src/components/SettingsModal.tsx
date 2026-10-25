@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Settings, X, ShieldCheck, Key, Cpu, Lock } from 'lucide-react';
 import type { AISettings } from '../types/event';
+import { DEFAULT_GEMINI_MODEL, SUPPORTED_GEMINI_MODELS } from '../services/aiAdapter';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -17,35 +19,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [useCustomKey, setUseCustomKey] = useState<boolean>(settings.useCustomKey);
   const [apiKey, setApiKey] = useState<string>(settings.apiKey);
-  const [model, setModel] = useState<string>(settings.model || 'gemini-1.5-flash');
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      previousFocusRef.current?.focus();
-      return;
-    }
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
-    const focusable = dialog?.querySelector<HTMLElement>('input, select, button, [tabindex]:not([tabindex="-1"])');
-    focusable?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { onCloseRef.current(); return; }
-      if (event.key !== 'Tab' || !dialog) return;
-      const elements = Array.from(dialog.querySelectorAll<HTMLElement>('input, select, button, [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute('disabled'));
-      if (elements.length === 0) return;
-      const first = elements[0];
-      const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isOpen]);
+  const [model, setModel] = useState<string>(settings.model || DEFAULT_GEMINI_MODEL);
+  const dialogRef = useDialogAccessibility<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -65,14 +40,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onSaveSettings({
       useCustomKey: false,
       apiKey: '',
-      model: 'gemini-1.5-flash',
+      model: DEFAULT_GEMINI_MODEL,
     });
     onClose();
   };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" ref={dialogRef}>
+      <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" ref={dialogRef} tabIndex={-1}>
         <div className="modal-header">
           <div className="modal-title-group">
             <Settings size={20} className="text-gold" />
@@ -162,8 +137,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                 >
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast & Recommended)</option>
-                  <option value="gemini-1.5-pro">Gemini 1.5 Pro (In-depth Creative Reasoning)</option>
+                  {SUPPORTED_GEMINI_MODELS.map((supportedModel) => (
+                    <option key={supportedModel} value={supportedModel}>
+                      {supportedModel === DEFAULT_GEMINI_MODEL ? 'Gemini 3.8 Flash (Recommended)' : 'Gemini 3.1 Pro (Preview)'}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

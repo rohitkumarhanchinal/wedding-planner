@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import {
   Sparkles,
   Palette,
@@ -27,6 +28,7 @@ export const IdeasShowcase: React.FC<IdeasShowcaseProps> = ({
   const [activeTab, setActiveTab] = useState<keyof PersonalizedIdeas>('themeAndAtmosphere');
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const dialogRef = useDialogAccessibility<HTMLDivElement>(showAddModal, () => setShowAddModal(false));
   const [newIdeaText, setNewIdeaText] = useState<string>('');
 
   const toggleFavorite = (ideaKey: string) => {
@@ -215,9 +217,9 @@ export const IdeasShowcase: React.FC<IdeasShowcaseProps> = ({
       {/* Add Custom Idea Modal */}
       {showAddModal && (
         <div className="modal-backdrop" onClick={() => setShowAddModal(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="custom-idea-dialog-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">
+              <h3 className="modal-title" id="custom-idea-dialog-title">
                 Add Idea to "{categories.find((c) => c.key === activeTab)?.label}"
               </h3>
               <button

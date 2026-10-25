@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import {
   Coins,
   Calendar,
@@ -41,9 +41,12 @@ import {
   saveSettings,
 } from './services/storage';
 import { getPlanningAdapter } from './services/aiAdapter';
+import { mergeEditedPlan } from './services/planMerge';
 import { SAMPLE_WEDDING } from './data/sampleEvents';
 
 type ActiveTab = 'budget' | 'timeline' | 'vendors' | 'ideas' | 'assumptions';
+
+const PLAN_TABS: ActiveTab[] = ['budget', 'timeline', 'vendors', 'ideas', 'assumptions'];
 
 export function App() {
   const [savedPlans, setSavedPlans] = useState<EventPlan[]>(() => loadSavedPlans());
@@ -73,6 +76,20 @@ export function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const handlePlanTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: ActiveTab) => {
+    const currentIndex = PLAN_TABS.indexOf(tab);
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % PLAN_TABS.length;
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + PLAN_TABS.length) % PLAN_TABS.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = PLAN_TABS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = PLAN_TABS[nextIndex];
+    setActiveTab(nextTab);
+    document.getElementById(`plan-tab-${nextTab}`)?.focus();
+  };
+
   // Create new or edit plan submission
   const handleSubmitForm = async (formData: EventFormData) => {
     setIsLoading(true);
@@ -81,13 +98,12 @@ export function App() {
       const adapter = getPlanningAdapter(settings);
       const generated = await adapter.generatePlan(formData);
 
-      // If we were editing existing plan, preserve custom checklist additions if appropriate
-      if (editingInputs && currentPlan) {
-        generated.id = currentPlan.id;
-      }
+      const plan = editingInputs && currentPlan
+        ? mergeEditedPlan(currentPlan, generated)
+        : generated;
 
-      setCurrentPlan(generated);
-      saveCurrentPlan(generated);
+      setCurrentPlan(plan);
+      saveCurrentPlan(plan);
       setSavedPlans(loadSavedPlans());
       setIsCreating(false);
       setEditingInputs(null);
@@ -213,7 +229,7 @@ export function App() {
       <Navbar
         currentPlan={currentPlan}
         savedPlansCount={savedPlans.length}
-        engineMode={settings.useCustomKey && settings.apiKey ? 'ai' : 'deterministic'}
+        engineMode={currentPlan?.engineMode ?? 'deterministic'}
         onNewEvent={handleStartNewEvent}
         onOpenSavedPlans={() => setIsDrawerOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -260,6 +276,10 @@ export function App() {
                 onClick={() => setActiveTab('budget')}
                 role="tab"
                 aria-selected={activeTab === 'budget'}
+                aria-controls="event-plan-tabpanel"
+                id="plan-tab-budget"
+                tabIndex={activeTab === 'budget' ? 0 : -1}
+                onKeyDown={(event) => handlePlanTabKeyDown(event, 'budget')}
               >
                 <Coins size={16} />
                 <span>Budget Breakdown</span>
@@ -270,6 +290,10 @@ export function App() {
                 onClick={() => setActiveTab('timeline')}
                 role="tab"
                 aria-selected={activeTab === 'timeline'}
+                aria-controls="event-plan-tabpanel"
+                id="plan-tab-timeline"
+                tabIndex={activeTab === 'timeline' ? 0 : -1}
+                onKeyDown={(event) => handlePlanTabKeyDown(event, 'timeline')}
               >
                 <Calendar size={16} />
                 <span>Planning Timeline</span>
@@ -280,6 +304,10 @@ export function App() {
                 onClick={() => setActiveTab('vendors')}
                 role="tab"
                 aria-selected={activeTab === 'vendors'}
+                aria-controls="event-plan-tabpanel"
+                id="plan-tab-vendors"
+                tabIndex={activeTab === 'vendors' ? 0 : -1}
+                onKeyDown={(event) => handlePlanTabKeyDown(event, 'vendors')}
               >
                 <ClipboardCheck size={16} />
                 <span>Vendor Checklist</span>
@@ -290,6 +318,10 @@ export function App() {
                 onClick={() => setActiveTab('ideas')}
                 role="tab"
                 aria-selected={activeTab === 'ideas'}
+                aria-controls="event-plan-tabpanel"
+                id="plan-tab-ideas"
+                tabIndex={activeTab === 'ideas' ? 0 : -1}
+                onKeyDown={(event) => handlePlanTabKeyDown(event, 'ideas')}
               >
                 <Sparkles size={16} />
                 <span>Personalized Ideas</span>
@@ -300,6 +332,10 @@ export function App() {
                 onClick={() => setActiveTab('assumptions')}
                 role="tab"
                 aria-selected={activeTab === 'assumptions'}
+                aria-controls="event-plan-tabpanel"
+                id="plan-tab-assumptions"
+                tabIndex={activeTab === 'assumptions' ? 0 : -1}
+                onKeyDown={(event) => handlePlanTabKeyDown(event, 'assumptions')}
               >
                 <HelpCircle size={16} />
                 <span>Assumptions & Steps</span>
@@ -307,7 +343,7 @@ export function App() {
             </div>
 
             {/* Active Section Content */}
-            <div className="tab-panel-container">
+            <div className="tab-panel-container" id="event-plan-tabpanel" role="tabpanel" aria-labelledby={`plan-tab-${activeTab}`} tabIndex={0}>
               {activeTab === 'budget' && (
                 <BudgetPlanner
                   categories={currentPlan.budgetBreakdown}

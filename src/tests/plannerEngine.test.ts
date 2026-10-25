@@ -126,6 +126,14 @@ describe('Validation Logic', () => {
     expect(Object.keys(res.errors).length).toBe(0);
   });
 
+  it('rejects impossible calendar dates', () => {
+    const result = validateEventForm({
+      eventType: 'wedding', name: 'Test Wedding', date: '2027-02-30', location: 'Florence',
+      guestCount: 10, currency: 'EUR', totalBudget: 1000,
+    });
+    expect(result.errors.date).toBeDefined();
+  });
+
   it('rejects missing name, negative guest count, and zero budget with helpful messages', () => {
     const invalidData: Partial<EventFormData> = {
       eventType: 'birthday',

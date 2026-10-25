@@ -154,6 +154,12 @@ button, input, select, textarea {
 }
 
 .brand-group {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -200,6 +206,8 @@ button, input, select, textarea {
 }
 
 .engine-status-badge {
+  appearance: none;
+  font-family: inherit;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -1905,7 +1913,6 @@ button, input, select, textarea {
   border-radius: var(--radius-lg);
   padding: 1.1rem;
   background: var(--bg-surface);
-  cursor: pointer;
   transition: all var(--transition-fast);
   display: flex;
   flex-direction: column;
@@ -1927,6 +1934,22 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.saved-plan-open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.saved-plan-open:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .saved-plan-tags {

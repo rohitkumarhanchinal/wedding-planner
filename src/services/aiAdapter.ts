@@ -1,5 +1,11 @@
-import type { EventFormData, EventPlan, AISettings } from '../types/event';
+import type { EventFormData, EventPlan, AISettings, PersonalizedIdeas, PlanAssumptions } from '../types/event';
 import { generateEventPlan } from './plannerEngine';
+
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+export const SUPPORTED_GEMINI_MODELS = [
+  DEFAULT_GEMINI_MODEL,
+  'gemini-3.1-pro-preview',
+] as const;
 
 export interface PlanningEngineAdapter {
   name: string;
@@ -15,10 +21,65 @@ export class DeterministicPlanningAdapter implements PlanningEngineAdapter {
   }
 
   async generatePlan(inputs: EventFormData): Promise<EventPlan> {
-    // Simulate natural async processing for smooth UI loading state
     await new Promise((resolve) => setTimeout(resolve, 350));
     return generateEventPlan(inputs, 'deterministic');
   }
+}
+
+interface GeminiResponseData {
+  ideas: PersonalizedIdeas;
+  assumptions: PlanAssumptions;
+}
+
+type UnknownRecord = Record<string, unknown>;
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+function isSuggestionList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length >= 3 && value.length <= 4 && value.every(
+    (item) => typeof item === 'string' && item.trim().length > 0 && item.length <= 500,
+  );
+}
+
+function parseGeminiResponse(value: unknown): GeminiResponseData | null {
+  if (!isRecord(value)) return null;
+  const ideaKeys = [
+    'themeAndAtmosphere',
+    'foodAndBeverage',
+    'activitiesAndMoments',
+    'decorAndDetails',
+    'guestExperience',
+  ] as const;
+  const ideaLists = ideaKeys.map((key) => value[key]);
+  if (!ideaLists.every(isSuggestionList) || !isSuggestionList(value.assumptions) || !isSuggestionList(value.nextSteps)) {
+    return null;
+  }
+  return {
+    ideas: {
+      themeAndAtmosphere: ideaLists[0],
+      foodAndBeverage: ideaLists[1],
+      activitiesAndMoments: ideaLists[2],
+      decorAndDetails: ideaLists[3],
+      guestExperience: ideaLists[4],
+    },
+    assumptions: {
+      assumptions: value.assumptions,
+      nextSteps: value.nextSteps,
+    },
+  };
+}
+
+function extractGeneratedText(value: unknown): string | null {
+  if (!isRecord(value) || !Array.isArray(value.candidates) || !isRecord(value.candidates[0])) return null;
+  const content = value.candidates[0].content;
+  if (!isRecord(content) || !Array.isArray(content.parts) || !isRecord(content.parts[0])) return null;
+  return typeof content.parts[0].text === 'string' ? content.parts[0].text : null;
+}
+
+function selectModel(model: string): string {
+  return SUPPORTED_GEMINI_MODELS.some((supportedModel) => supportedModel === model)
+    ? model
+    : DEFAULT_GEMINI_MODEL;
 }
 
 export class GeminiAIAdapter implements PlanningEngineAdapter {
@@ -26,9 +87,9 @@ export class GeminiAIAdapter implements PlanningEngineAdapter {
   private apiKey: string;
   private model: string;
 
-  constructor(apiKey: string, model: string = 'gemini-1.5-flash') {
+  constructor(apiKey: string, model: string = DEFAULT_GEMINI_MODEL) {
     this.apiKey = apiKey.trim();
-    this.model = model;
+    this.model = selectModel(model);
   }
 
   isAvailable(): boolean {
@@ -36,14 +97,10 @@ export class GeminiAIAdapter implements PlanningEngineAdapter {
   }
 
   async generatePlan(inputs: EventFormData): Promise<EventPlan> {
-    if (!this.isAvailable()) {
-      return generateEventPlan(inputs, 'deterministic');
-    }
+    if (!this.isAvailable()) return generateEventPlan(inputs, 'deterministic');
 
-    // Call Gemini API if user configured their own key
-    try {
-      const prompt = `You are an expert celebration and event planner. 
-Generate a comprehensive, tailored event plan in valid JSON format matching this schema:
+    const prompt = `You are an expert celebration and event planner. Generate tailored creative ideas, assumptions, and next steps as valid JSON. Return exactly 3-4 concise strings in each array.
+
 Event Details:
 - Type: ${inputs.eventType}
 - Name: ${inputs.name}
@@ -57,88 +114,53 @@ Event Details:
 - Dietary/Accessibility: ${inputs.dietaryAccessibility || 'None specified'}
 - Notes: ${inputs.additionalNotes || 'None'}
 
-Return ONLY a raw JSON object with keys:
-{
-  "themeAndAtmosphere": [3-4 descriptive ideas],
-  "foodAndBeverage": [3-4 descriptive ideas],
-  "activitiesAndMoments": [3-4 descriptive ideas],
-  "decorAndDetails": [3-4 descriptive ideas],
-  "guestExperience": [3-4 descriptive ideas],
-  "assumptions": [3-4 realistic assumptions],
-  "nextSteps": [3-4 concrete next steps]
-}`;
+Return a JSON object with string-array keys: themeAndAtmosphere, foodAndBeverage, activitiesAndMoments, decorAndDetails, guestExperience, assumptions, nextSteps.`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
 
+    try {
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [
-              {
-                parts: [{ text: prompt }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.7,
-              responseMimeType: 'application/json',
-            },
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, responseMimeType: 'application/json' },
           }),
-        }
+          signal: controller.signal,
+        },
       );
+      if (!response.ok) return generateEventPlan(inputs, 'deterministic');
 
-      if (!response.ok) {
-        throw new Error('Gemini request failed.');
-      }
+      const responseData: unknown = await response.json();
+      const generatedText = extractGeneratedText(responseData);
+      if (!generatedText || generatedText.length > 20_000) return generateEventPlan(inputs, 'deterministic');
 
-      const data = await response.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) {
-        throw new Error('Empty response received from Gemini API');
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(generatedText);
+      } catch {
+        return generateEventPlan(inputs, 'deterministic');
       }
+      const generatedContent = parseGeminiResponse(parsedJson);
+      if (!generatedContent) return generateEventPlan(inputs, 'deterministic');
 
-      const parsed = JSON.parse(rawText);
-
-      // Start with strict deterministic budget and timeline math (ensuring exact mathematical balance)
-      const basePlan = generateEventPlan(inputs, 'ai');
-
-      // Enhance with the model's creative ideas and assumptions
-      if (parsed.themeAndAtmosphere && Array.isArray(parsed.themeAndAtmosphere)) {
-        basePlan.ideas.themeAndAtmosphere = parsed.themeAndAtmosphere;
-      }
-      if (parsed.foodAndBeverage && Array.isArray(parsed.foodAndBeverage)) {
-        basePlan.ideas.foodAndBeverage = parsed.foodAndBeverage;
-      }
-      if (parsed.activitiesAndMoments && Array.isArray(parsed.activitiesAndMoments)) {
-        basePlan.ideas.activitiesAndMoments = parsed.activitiesAndMoments;
-      }
-      if (parsed.decorAndDetails && Array.isArray(parsed.decorAndDetails)) {
-        basePlan.ideas.decorAndDetails = parsed.decorAndDetails;
-      }
-      if (parsed.guestExperience && Array.isArray(parsed.guestExperience)) {
-        basePlan.ideas.guestExperience = parsed.guestExperience;
-      }
-      if (parsed.assumptions && Array.isArray(parsed.assumptions)) {
-        basePlan.assumptions.assumptions = parsed.assumptions;
-      }
-      if (parsed.nextSteps && Array.isArray(parsed.nextSteps)) {
-        basePlan.assumptions.nextSteps = parsed.nextSteps;
-      }
-
-      return basePlan;
+      const plan = generateEventPlan(inputs, 'ai');
+      plan.ideas = generatedContent.ideas;
+      plan.assumptions = generatedContent.assumptions;
+      return plan;
     } catch {
-      // Fallback cleanly to high-quality deterministic plan
-      const fallbackPlan = generateEventPlan(inputs, 'deterministic');
-      return fallbackPlan;
+      return generateEventPlan(inputs, 'deterministic');
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }
 
 export function getPlanningAdapter(settings?: AISettings): PlanningEngineAdapter {
   if (settings?.useCustomKey && settings.apiKey) {
-    return new GeminiAIAdapter(settings.apiKey, settings.model || 'gemini-1.5-flash');
+    return new GeminiAIAdapter(settings.apiKey, settings.model || DEFAULT_GEMINI_MODEL);
   }
   return new DeterministicPlanningAdapter();
 }

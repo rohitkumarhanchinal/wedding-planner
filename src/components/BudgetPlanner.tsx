@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import {
   Coins,
   CheckCircle2,
@@ -33,6 +34,7 @@ export const BudgetPlanner: React.FC<BudgetPlannerProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const dialogRef = useDialogAccessibility<HTMLDivElement>(showAddModal, () => setShowAddModal(false));
   const [newCatName, setNewCatName] = useState<string>('');
   const [newCatAmount, setNewCatAmount] = useState<number>(0);
   const [newCatDesc, setNewCatDesc] = useState<string>('');
@@ -356,9 +358,9 @@ export const BudgetPlanner: React.FC<BudgetPlannerProps> = ({
       {/* Add Custom Category Modal */}
       {showAddModal && (
         <div className="modal-backdrop" onClick={() => setShowAddModal(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="custom-budget-dialog-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Add Custom Budget Category</h3>
+              <h3 className="modal-title" id="custom-budget-dialog-title">Add Custom Budget Category</h3>
               <button
                 type="button"
                 className="btn btn-ghost btn-xs btn-icon-only"

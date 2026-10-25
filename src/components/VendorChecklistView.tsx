@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import {
   ClipboardCheck,
   PlusCircle,
@@ -29,6 +30,7 @@ export const VendorChecklistView: React.FC<VendorChecklistViewProps> = ({
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const dialogRef = useDialogAccessibility<HTMLDivElement>(showAddModal, () => setShowAddModal(false));
 
   // New vendor form state
   const [newTitle, setNewTitle] = useState('');
@@ -300,9 +302,9 @@ export const VendorChecklistView: React.FC<VendorChecklistViewProps> = ({
       {/* Add Custom Vendor Modal */}
       {showAddModal && (
         <div className="modal-backdrop" onClick={() => setShowAddModal(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="custom-vendor-dialog-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Add Custom Vendor Task</h3>
+              <h3 className="modal-title" id="custom-vendor-dialog-title">Add Custom Vendor Task</h3>
               <button
                 type="button"
                 className="btn btn-ghost btn-xs btn-icon-only"

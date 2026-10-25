@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import {
   FolderHeart,
   X,
@@ -42,30 +43,7 @@ export const SavedPlansDrawer: React.FC<SavedPlansDrawerProps> = ({
   onImportPlan,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dialogRef = useRef<HTMLElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-
-  useEffect(() => {
-    if (!isOpen) { previousFocusRef.current?.focus(); return; }
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
-    const focusable = dialog?.querySelector<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])');
-    focusable?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { onCloseRef.current(); return; }
-      if (event.key !== 'Tab' || !dialog) return;
-      const elements = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute('disabled') && element.offsetParent !== null);
-      if (elements.length === 0) return;
-      const first = elements[0]; const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isOpen]);
+  const dialogRef = useDialogAccessibility<HTMLElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -86,6 +64,7 @@ export const SavedPlansDrawer: React.FC<SavedPlansDrawerProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="saved-plans-title"
+        tabIndex={-1}
       >
         <div className="drawer-header">
           <div className="drawer-title-group">
@@ -149,42 +128,24 @@ export const SavedPlansDrawer: React.FC<SavedPlansDrawerProps> = ({
               {savedPlans.map((plan) => {
                 const isActive = currentPlanId === plan.id;
                 return (
-                  <div
-                    key={plan.id}
-                    className={`saved-plan-card ${isActive ? 'active-plan' : ''}`}
-                    onClick={() => {
-                      onSelectPlan(plan);
-                      onClose();
-                    }}
-                    role="button"
-                    aria-label={`Open ${plan.inputs.name}`}
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onSelectPlan(plan);
-                        onClose();
-                      }
-                    }}
-                  >
+                  <div key={plan.id} className={`saved-plan-card ${isActive ? 'active-plan' : ''}`}>
                     <div className="saved-card-header">
                       <div className="saved-plan-tags">
                         <span className="event-type-badge">{plan.inputs.eventType.toUpperCase()}</span>
                         {plan.isSample && (
                           <span className="sample-mini-tag">
-                            <Sparkles size={10} />
+                            <Sparkles size={10} aria-hidden="true" />
                             <span>Sample</span>
                           </span>
                         )}
                         {isActive && (
                           <span className="current-active-tag">
-                            <Check size={11} />
+                            <Check size={11} aria-hidden="true" />
                             <span>Active</span>
                           </span>
                         )}
                       </div>
-
-                      <div className="saved-card-actions no-print" onClick={(e) => e.stopPropagation()}>
+                      <div className="saved-card-actions no-print">
                         <button
                           type="button"
                           className="btn btn-ghost btn-xs btn-icon-only"
@@ -214,20 +175,30 @@ export const SavedPlansDrawer: React.FC<SavedPlansDrawerProps> = ({
                         </button>
                       </div>
                     </div>
-
-                    <h3 className="saved-plan-name">{plan.inputs.name}</h3>
-
+                    <h3 className="saved-plan-name">
+                      <button
+                        type="button"
+                        className="saved-plan-open"
+                        onClick={() => {
+                          onSelectPlan(plan);
+                          onClose();
+                        }}
+                        aria-label={`Open ${plan.inputs.name}`}
+                      >
+                        {plan.inputs.name}
+                      </button>
+                    </h3>
                     <div className="saved-plan-meta">
                       <div className="meta-item">
-                        <Calendar size={13} className="text-muted" />
+                        <Calendar size={13} className="text-muted" aria-hidden="true" />
                         <span>{plan.inputs.date}</span>
                       </div>
                       <div className="meta-item">
-                        <Users size={13} className="text-muted" />
+                        <Users size={13} className="text-muted" aria-hidden="true" />
                         <span>{plan.inputs.guestCount} guests</span>
                       </div>
                       <div className="meta-item">
-                        <Coins size={13} className="text-gold" />
+                        <Coins size={13} className="text-gold" aria-hidden="true" />
                         <span>{formatCurrency(plan.inputs.totalBudget, plan.inputs.currency)}</span>
                       </div>
                     </div>

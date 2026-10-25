@@ -1,6 +1,7 @@
 import type { EventPlan, AISettings } from '../types/event';
 import { SAMPLE_EVENTS } from '../data/sampleEvents';
-import { parseImportedPlan } from './eventPlanValidation';
+import { parseImportedPlan, validateEventPlan } from './eventPlanValidation';
+import { DEFAULT_GEMINI_MODEL, SUPPORTED_GEMINI_MODELS } from './aiAdapter';
 
 const STORAGE_KEY_CURRENT = 'event_planner_current_plan';
 const STORAGE_KEY_SAVED_PLANS = 'event_planner_saved_plans';
@@ -10,9 +11,12 @@ export function loadCurrentPlan(): EventPlan | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CURRENT);
     if (!raw) return null;
-    return JSON.parse(raw) as EventPlan;
-  } catch (err) {
-    console.error('Error loading current plan from localStorage:', err);
+    const parsed: unknown = JSON.parse(raw);
+    if (validateEventPlan(parsed)) return parsed;
+    localStorage.removeItem(STORAGE_KEY_CURRENT);
+    return null;
+  } catch {
+    try { localStorage.removeItem(STORAGE_KEY_CURRENT); } catch { /* Storage may be unavailable. */ }
     return null;
   }
 }
@@ -37,10 +41,17 @@ export function loadSavedPlans(): EventPlan[] {
       localStorage.setItem(STORAGE_KEY_SAVED_PLANS, JSON.stringify(SAMPLE_EVENTS));
       return SAMPLE_EVENTS;
     }
-    const plans = JSON.parse(raw) as EventPlan[];
-    return Array.isArray(plans) ? plans : [];
-  } catch (err) {
-    console.error('Error loading saved plans:', err);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      localStorage.setItem(STORAGE_KEY_SAVED_PLANS, JSON.stringify([]));
+      return [];
+    }
+    const plans = parsed.filter(validateEventPlan);
+    if (plans.length !== parsed.length) {
+      localStorage.setItem(STORAGE_KEY_SAVED_PLANS, JSON.stringify(plans));
+    }
+    return plans;
+  } catch {
     return SAMPLE_EVENTS;
   }
 }
@@ -142,8 +153,12 @@ export async function importPlanFromJson(file: File): Promise<EventPlan> {
 
 const MAX_PLAN_FILE_SIZE = 2 * 1024 * 1024;
 
+function isSupportedStoredModel(value: unknown): value is string {
+  return typeof value === 'string' && SUPPORTED_GEMINI_MODELS.some((model) => model === value);
+}
+
 export function loadSettings(): AISettings {
-  const fallback: AISettings = { apiKey: '', useCustomKey: false, model: 'gemini-1.5-flash' };
+  const fallback: AISettings = { apiKey: '', useCustomKey: false, model: DEFAULT_GEMINI_MODEL };
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
     if (!raw) return fallback;
@@ -151,8 +166,8 @@ export function loadSettings(): AISettings {
     if (typeof stored !== 'object' || stored === null) return fallback;
     const record = stored as Record<string, unknown>;
     // Remove any key written by older versions immediately, and never return it.
-    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ useCustomKey: record.useCustomKey === true, model: typeof record.model === 'string' ? record.model : fallback.model }));
-    return { apiKey: '', useCustomKey: record.useCustomKey === true, model: typeof record.model === 'string' ? record.model : fallback.model };
+    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ useCustomKey: false, model: isSupportedStoredModel(record.model) ? record.model : fallback.model }));
+    return { apiKey: '', useCustomKey: false, model: isSupportedStoredModel(record.model) ? record.model : fallback.model };
   } catch {
     try { localStorage.removeItem(STORAGE_KEY_SETTINGS); } catch { /* Storage may be unavailable. */ }
     return fallback;
@@ -161,7 +176,7 @@ export function loadSettings(): AISettings {
 
 export function saveSettings(settings: AISettings): void {
   try {
-    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ useCustomKey: settings.useCustomKey, model: settings.model }));
+    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ useCustomKey: false, model: isSupportedStoredModel(settings.model) ? settings.model : DEFAULT_GEMINI_MODEL }));
   } catch {
     // Settings are optional; avoid logging values that may contain credentials.
   }

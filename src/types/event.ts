@@ -46,6 +46,7 @@ export interface TimelineMilestone {
   isPastDue: boolean;
   timeframeDescription: string;
   status: TaskStatus;
+  isCustom?: boolean;
   tasks: {
     id: string;
     text: string;

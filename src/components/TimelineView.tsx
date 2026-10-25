@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import {
   Calendar,
   Clock,
@@ -22,6 +23,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 }) => {
   const [collapsedPhases, setCollapsedPhases] = useState<Record<string, boolean>>({});
   const [showAddMilestone, setShowAddMilestone] = useState(false);
+  const dialogRef = useDialogAccessibility<HTMLDivElement>(showAddMilestone, () => setShowAddMilestone(false));
   const [newTitle, setNewTitle] = useState('');
   const [newPhase, setNewPhase] = useState('Planning Phase');
   const [newDate, setNewDate] = useState('');
@@ -83,6 +85,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       isPastDue: diffDays < 0,
       timeframeDescription: diffDays > 0 ? `In ${diffDays} days` : 'Immediate',
       status: 'pending',
+      isCustom: true,
       tasks:
         tasksList.length > 0
           ? tasksList
@@ -155,7 +158,14 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                   onClick={() => togglePhase(m.id)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && togglePhase(m.id)}
+                  aria-expanded={!collapsedPhases[m.id]}
+                  aria-controls={`timeline-tasks-${encodeURIComponent(m.id)}`}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      togglePhase(m.id);
+                    }
+                  }}
                 >
                   <div className="milestone-title-group">
                     <span className="milestone-phase-badge">{m.phase}</span>
@@ -226,9 +236,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       {/* Add Custom Milestone Modal */}
       {showAddMilestone && (
         <div className="modal-backdrop" onClick={() => setShowAddMilestone(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="custom-timeline-dialog-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Add Custom Milestone Phase</h3>
+              <h3 className="modal-title" id="custom-timeline-dialog-title">Add Custom Milestone Phase</h3>
               <button
                 type="button"
                 className="btn btn-ghost btn-xs btn-icon-only"

@@ -30,7 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="navbar no-print">
       <div className="navbar-container">
         {/* Brand */}
-        <div className="brand-group" onClick={onNewEvent} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onNewEvent()}>
+        <button type="button" className="brand-group" onClick={onNewEvent} aria-label="Create a new event plan">
           <div className="brand-logo">
             <Sparkles size={22} className="brand-sparkle" />
           </div>
@@ -38,10 +38,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="brand-title">Festiva</span>
             <span className="brand-subtitle">Celebration Planner</span>
           </div>
-        </div>
+        </button>
 
         {/* Engine status indicator */}
-        <div className="engine-status-badge" onClick={onOpenSettings} title="Click to view planning engine settings" role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpenSettings()}>
+        <button type="button" className="engine-status-badge" onClick={onOpenSettings} title="View planning engine settings" aria-label="Open planning engine settings">
           {engineMode === 'ai' ? (
             <>
               <Cpu size={14} className="text-accent" />
@@ -53,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="engine-label">Offline Engine (100% Private)</span>
             </>
           )}
-        </div>
+        </button>
 
         {/* Action controls */}
         <nav className="nav-actions" aria-label="Main Navigation">

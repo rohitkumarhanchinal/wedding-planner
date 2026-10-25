@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar,
   MapPin,
@@ -29,6 +29,12 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
   onExport,
 }) => {
   const { inputs, isSample, vendorChecklist, timeline } = plan;
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   // Memoize countdown calculation
   const { countdownText, countdownClass } = useMemo(() => {
@@ -39,7 +45,7 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
     eventDate.setHours(0, 0, 0, 0);
 
     const eventTime = eventDate.getTime();
-    const diffDays = Math.ceil((eventTime - Date.now()) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.ceil((eventTime - currentTime) / (1000 * 60 * 60 * 24));
 
     if (diffDays > 1) {
       return { countdownText: `${diffDays} Days to go`, countdownClass: 'badge-future' };
@@ -50,7 +56,7 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
     } else {
       return { countdownText: `Occurred ${Math.abs(diffDays)} days ago`, countdownClass: 'badge-past' };
     }
-  }, [inputs.date]);
+  }, [inputs.date, currentTime]);
 
   // Calculate overall task completion
   const vendorCompleted = vendorChecklist.filter(
